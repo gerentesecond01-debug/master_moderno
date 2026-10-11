@@ -97,26 +97,29 @@ async function probeUrl(url,timeoutMs=9000){
   const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{const r=await fetch(String(url).replace(/\/$/,'')+'/health',{signal:controller.signal,cache:'no-store'});return r.ok}catch{return false}finally{clearTimeout(timer)}
 }
+let refreshInFlight=null;
 async function refreshAgents(waitBetween=true){
-  const all=(await db.listAgents()).filter(a=>a.approved);
-  const pending=new Map(all.map(a=>[a.id,a]));
-  const delays=waitBetween?[0,8000,8000]:[0];
-  for(let round=0;round<delays.length && pending.size;round++){
-    if(delays[round])await new Promise(r=>setTimeout(r,delays[round]));
-    const batch=[...pending.values()];
-    await Promise.all(batch.map(async a=>{
-      if(!a.agentUrl){await db.setAgentCheck(a.id,'no_url');pending.delete(a.id);return}
-      const ok=await probeUrl(a.agentUrl,5000);
-      if(ok){await db.setAgentCheck(a.id,'online',{masterCheckAttempt:round+1});pending.delete(a.id)}
-      else if(round<delays.length-1)await db.setAgentCheck(a.id,'waking',{masterCheckAttempt:round+1});
-      else await db.setAgentCheck(a.id,'offline',{masterCheckAttempt:round+1});
-    }));
-  }
-  return db.listAgents();
+  if(refreshInFlight)return refreshInFlight;
+  refreshInFlight=(async()=>{
+    const all=(await db.listAgents()).filter(a=>a.approved);
+    const pending=new Map(all.map(a=>[a.id,a]));
+    const maxRounds=waitBetween?10:1;
+    for(let round=0;round<maxRounds && pending.size;round++){
+      if(round)await new Promise(resolve=>setTimeout(resolve,8000));
+      await Promise.all([...pending.values()].map(async a=>{
+        if(!a.agentUrl){await db.setAgentCheck(a.id,'no_url');pending.delete(a.id);return}
+        const ok=await probeUrl(a.agentUrl,9000);
+        if(ok){await db.setAgentCheck(a.id,'online',{masterCheckAttempt:round+1});pending.delete(a.id)}
+        else await db.setAgentCheck(a.id,round===maxRounds-1?'offline':'waking',{masterCheckAttempt:round+1});
+      }));
+    }
+    return db.listAgents();
+  })();
+  try{return await refreshInFlight}finally{refreshInFlight=null}
 }
 async function ensureAgentForBot(botId){
   let b=await db.get(botId,true); if(!b)throw new Error('Bot não encontrado');
-  if(b.agentId){const a=await db.getAgent(b.agentId);if(a&&a.approved&&await probeUrl(a.agent_url,9000)){await db.setAgentCheck(a.id,'online');return b}await db.assignAgent(botId,null);}
+  if(b.agentId){const a=await db.getAgent(b.agentId);if(a&&a.approved){await refreshAgents(true);if(await probeUrl(a.agent_url,9000)){await db.setAgentCheck(a.id,'online');return b}}await db.assignAgent(botId,null);}
   await refreshAgents(true);
   const free=await db.firstFreeOnlineAgent();
   if(!free)throw new Error('Nenhum servidor disponível respondeu. Abra Servidores e use Atualizar para conferir os Agents.');
