@@ -1,5 +1,5 @@
 require('dotenv').config();
-const express=require('express');const session=require('express-session');const PgSession=require('connect-pg-simple')(session);const {Pool}=require('pg');const path=require('path');const db=require('./database');const agent=require('./agentClient');
+const express=require('express');const session=require('express-session');const PgSession=require('connect-pg-simple')(session);const {Pool}=require('pg');const path=require('path');const db=require('./database');const agent=require('./agentClient');const watchdog=require('./agentWatchdog');
 const {encryptBackup,decryptBackup}=require('./backupCrypto');
 const app=express();const PORT=Number(process.env.PORT||10000);
 // Render termina o HTTPS no proxy. Sem trust proxy, cookies 'secure' podem não ser gravados.
@@ -44,42 +44,7 @@ app.use(session({
     maxAge:1000*60*60*24*7
   }
 }));
-// Ao abrir a página pública do Master, acorda em segundo plano os Agents
-// que estão cadastrados como desejados online. Não expõe comandos administrativos.
-let lastPublicWake = 0;
-async function wakeDesiredAgents(){
-  const now = Date.now();
-  // Evita disparar vários wake-ups seguidos caso a página seja atualizada repetidamente.
-  if (now - lastPublicWake < 15000) return;
-  lastPublicWake = now;
-  try {
-    const bots = await db.list();
-    const targets=[]; for(const b of bots){if(!b.desiredOnline)continue;try{const full=await db.get(b.id,true);if(full.agentUrl)targets.push(full)}catch{}}
-    for (const b of targets) {
-      // Não aguardamos o resultado: só precisamos gerar uma requisição de entrada
-      // no serviço Free do Render para que ele acorde.
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-      fetch(String(b.agentUrl).replace(/\/$/, '') + '/health', {
-        method: 'GET',
-        signal: controller.signal
-      }).catch(() => {}).finally(() => clearTimeout(timer));
-    }
-    if (targets.length) console.log(`Wake público: ${targets.length} Agent(s) acionado(s).`);
-  } catch (e) {
-    console.warn('Wake público falhou:', e.message);
-  }
-}
-
-// IMPORTANTE: este middleware vem ANTES do express.static.
-// Assim, visitar / já dispara o wake mesmo quando index.html é servido como arquivo estático.
-app.use((req,res,next)=>{
-  if(req.method==='GET' && (req.path==='/' || req.path==='/index.html')){
-    wakeDesiredAgents().catch(()=>{});
-  }
-  next();
-});
-
+// Despertar agora é controlado pelo Watchdog, apenas para Agents sem heartbeat.
 app.use(express.static(path.join(__dirname,'public')));
 function auth(req,res,next){if(req.session.ok)return next();res.status(401).json({ok:false,error:'Não autenticado'});}function fail(res,e,code=500){res.status(code).json({ok:false,error:e.message||String(e)})}
 app.get('/',(_q,r)=>r.sendFile(path.join(__dirname,'public/index.html')));
@@ -98,21 +63,10 @@ async function probeUrl(url,timeoutMs=9000){
   try{const r=await fetch(String(url).replace(/\/$/,'')+'/health',{signal:controller.signal,cache:'no-store'});return r.ok}catch{return false}finally{clearTimeout(timer)}
 }
 let refreshInFlight=null;
-async function refreshAgents(waitBetween=true){
+async function refreshAgents(){
   if(refreshInFlight)return refreshInFlight;
   refreshInFlight=(async()=>{
-    const all=(await db.listAgents()).filter(a=>a.approved);
-    const pending=new Map(all.map(a=>[a.id,a]));
-    const maxRounds=waitBetween?10:1;
-    for(let round=0;round<maxRounds && pending.size;round++){
-      if(round)await new Promise(resolve=>setTimeout(resolve,8000));
-      await Promise.all([...pending.values()].map(async a=>{
-        if(!a.agentUrl){await db.setAgentCheck(a.id,'no_url');pending.delete(a.id);return}
-        const ok=await probeUrl(a.agentUrl,9000);
-        if(ok){await db.setAgentCheck(a.id,'online',{masterCheckAttempt:round+1});pending.delete(a.id)}
-        else await db.setAgentCheck(a.id,round===maxRounds-1?'offline':'waking',{masterCheckAttempt:round+1});
-      }));
-    }
+    await watchdog.observe();
     return db.listAgents();
   })();
   try{return await refreshInFlight}finally{refreshInFlight=null}
@@ -166,7 +120,8 @@ app.get('/api/bots/:id/logs',auth,async(req,res)=>{try{const b=await db.get(req.
 // Pool de Agents: o Agent se apresenta sozinho; o dono aprova e atribui um bot no painel.
 app.post('/api/agents/register',async(req,res)=>{try{const a=await db.registerAgent(req.body||{});const runtime=await db.agentRuntime(a.agent_key);res.json({ok:true,approved:!!a.approved,agentId:Number(a.id),agentSecret:runtime?.agentSecret||'',botId:runtime?.botId||0,desiredOnline:!!runtime?.desiredOnline,config:runtime?.config||null})}catch(e){fail(res,e,400)}});
 app.get('/api/agents',auth,async(req,res)=>{try{res.json({ok:true,agents:await db.listAgents()})}catch(e){fail(res,e)}});
-app.post('/api/agents/refresh',auth,async(req,res)=>{try{res.json({ok:true,agents:await refreshAgents(true)})}catch(e){fail(res,e,500)}});
+app.post('/api/agents/refresh',auth,async(req,res)=>{try{res.json({ok:true,agents:await refreshAgents()})}catch(e){fail(res,e,500)}});
+app.post('/api/agents/:id/wake',auth,async(req,res)=>{try{const a=(await db.listAgents()).find(x=>x.id===Number(req.params.id));if(!a||!a.approved)return fail(res,new Error('Agent não aprovado'),404);watchdog.recover(a,true).catch(e=>console.error('Despertar manual:',e));res.json({ok:true,message:'Tentativa de recuperação iniciada'})}catch(e){fail(res,e)}});
 app.put('/api/agents/:id',auth,async(req,res)=>{try{res.json({ok:true,agent:await db.updateAgent(req.params.id,req.body||{})})}catch(e){fail(res,e,400)}});
 app.post('/api/agents/:id/approve',auth,async(req,res)=>{try{res.json({ok:true,agent:await db.approveAgent(req.params.id,req.body?.name||'')})}catch(e){fail(res,e,400)}});
 app.delete('/api/agents/:id',auth,async(req,res)=>{try{await db.deleteAgent(req.params.id);res.json({ok:true})}catch(e){fail(res,e,400)}});
@@ -183,4 +138,4 @@ app.post('/api/system/restore',auth,async(req,res)=>{try{const data=decryptBacku
 app.get('/health',(_q,r)=>r.send('ok'));
 db.init().then(()=>{setInterval(()=>db.cleanupLogs(Number(process.env.LOG_RETENTION_DAYS||30)).catch(e=>console.warn('Limpeza de logs:',e.message)),6*60*60*1000);return app.listen(PORT,'0.0.0.0',()=>console.log('Master Panel ativo na porta',PORT))}).catch(e=>{console.error(e);process.exit(1)});
 
-new Promise(resolve=>setTimeout(resolve,5000)).then(()=>db.initRoutes()).then(()=>{setInterval(schedulerTick,20000);setInterval(pendingConnections,60000);pendingConnections()}).catch(e=>console.error('Rotas:',e.message));
+new Promise(resolve=>setTimeout(resolve,5000)).then(()=>db.initRoutes()).then(()=>{setInterval(schedulerTick,20000);setInterval(pendingConnections,60000);setInterval(()=>watchdog.observe().catch(e=>console.error('Watchdog:',e.message)),90000);watchdog.observe().catch(console.error);pendingConnections()}).catch(e=>console.error('Rotas:',e.message));
