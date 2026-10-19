@@ -39,3 +39,21 @@ aside{width:210px;padding:18px 10px}main{margin-left:210px;padding:22px clamp(12
 .monitor-table{min-width:1020px}.monitor-table td:nth-child(4){max-width:220px;white-space:normal;overflow-wrap:anywhere}
 .monitor-buttons{min-width:440px}.monitor-buttons button:disabled{opacity:.42;cursor:not-allowed}
 .monitor-facts b{overflow-wrap:anywhere}
+
+/* Monitor organizado: informações legíveis e controles em grade, sem rolagem horizontal forçada */
+.monitor-table{min-width:0;width:100%;table-layout:fixed;white-space:normal}
+.monitor-table th,.monitor-table td{vertical-align:middle;padding:15px 12px;overflow-wrap:anywhere}
+.monitor-table th:nth-child(1){width:15%}
+.monitor-table th:nth-child(2){width:10%}
+.monitor-table th:nth-child(3){width:21%}
+.monitor-table th:nth-child(4){width:22%}
+.monitor-table th:nth-child(5){width:32%}
+.monitor-table td:nth-child(4){max-width:none}
+.monitor-table td:nth-child(4) b,.monitor-table td:nth-child(4) small{overflow-wrap:anywhere;word-break:break-word}
+.monitor-buttons{min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;align-items:stretch}
+.monitor-buttons button{min-width:0;padding:9px 6px;line-height:1.2;white-space:normal;text-align:center}
+.monitor-table td:first-child b{font-size:13px}
+.monitor-table td:first-child small{font-size:11px}
+.server-auto-label{font-size:12px;white-space:nowrap}
+@media(max-width:1150px){.monitor-table{min-width:900px}.monitor-table th:nth-child(1){width:15%}.monitor-table th:nth-child(2){width:10%}.monitor-table th:nth-child(3){width:19%}.monitor-table th:nth-child(4){width:22%}.monitor-table th:nth-child(5){width:34%}}
+@media(max-width:800px){.monitor-table{min-width:850px}.monitor-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}}
