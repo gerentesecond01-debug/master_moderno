@@ -33,6 +33,7 @@ async function setState(agent, state, attempt, error='') {
 async function recover(agent, manual=false) {
   const id = Number(agent.id);
   if (!agent.approved || !agent.agentUrl || active.has(id)) return;
+  if (!manual && !(await db.list()).some(b=>b.desiredOnline && Number(b.agentId)===id)) return;
   const previous = agent.status || {};
   if (!manual && previous.watchdogExhausted) return;
   active.add(id);
@@ -42,6 +43,7 @@ async function recover(agent, manual=false) {
       // Um registro recente do próprio Agent cancela o ciclo.
       const current = await db.getAgent(id);
       if (!current || !current.approved || current.agent_url !== agent.agentUrl) return;
+      if (!manual && !(await db.list()).some(b=>b.desiredOnline && Number(b.agentId)===id)) return;
       if (Date.now()-new Date(current.last_seen).getTime() < STALE_MS) {
         await setState(agent,'online',0);return;
       }
@@ -68,7 +70,10 @@ async function recover(agent, manual=false) {
   } finally { active.delete(id); }
 }
 async function observe() {
-  const agents=(await db.listAgents()).filter(a=>a.approved && a.agentUrl);
+  // Só recuperar automaticamente Agents de avatares que DEVEM estar online.
+  // Avatares desligados voluntariamente ficam livres para o Render suspender.
+  const desiredIds=new Set((await db.list()).filter(b=>b.desiredOnline && b.agentId).map(b=>Number(b.agentId)));
+  const agents=(await db.listAgents()).filter(a=>a.approved && a.agentUrl && desiredIds.has(Number(a.id)));
   for (const a of agents) {
     const age=Date.now()-new Date(a.lastSeen).getTime();
     if (!Number.isFinite(age)) continue;

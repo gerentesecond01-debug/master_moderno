@@ -51,7 +51,7 @@ app.get('/',(_q,r)=>r.sendFile(path.join(__dirname,'public/index.html')));
 app.post('/api/login',(req,res)=>{if(String(req.body.password||'')===String(process.env.ADMIN_PASSWORD||'admin123')){req.session.ok=true;return res.json({ok:true})}res.status(403).json({ok:false,error:'Senha incorreta'})});
 app.post('/api/logout',(q,r)=>q.session.destroy(()=>r.json({ok:true})));
 app.get('/api/me',auth,(q,r)=>r.json({ok:true}));
-app.get('/api/bots',auth,async(q,r)=>{try{const bots=await db.list();const servers=await db.listAgents();const byId=new Map(servers.map(a=>[Number(a.id),a]));for(const b of bots){const srv=byId.get(Number(b.agentId));b.server=srv?{id:srv.id,name:srv.name,agentUrl:srv.agentUrl,checkStatus:srv.checkStatus,approved:srv.approved}:null;}for(const b of bots){try{const full=await db.get(b.id,true);const s=await agent.call(full,'/status');b.live=s.status||s;}catch(e){b.live={reachable:false,phase:'unreachable',error:e.message}}}r.json({ok:true,bots})}catch(e){fail(r,e)}});
+app.get('/api/bots',auth,async(q,r)=>{try{const bots=await db.list();const servers=await db.listAgents();const byId=new Map(servers.map(a=>[Number(a.id),a]));for(const b of bots){const srv=byId.get(Number(b.agentId));b.server=srv?{id:srv.id,name:srv.name,agentUrl:srv.agentUrl,checkStatus:srv.checkStatus,approved:srv.approved}:null;}for(const b of bots){if(!b.desiredOnline){b.live={reachable:false,online:false,running:false,phase:'stopped',lastReason:'Desligado pelo usuário'};continue;}try{const full=await db.get(b.id,true);const s=await agent.call(full,'/status');b.live=s.status||s;}catch(e){b.live={reachable:false,phase:'unreachable',error:e.message}}}r.json({ok:true,bots})}catch(e){fail(r,e)}});
 app.post('/api/bots',auth,async(req,res)=>{try{const b=await db.create(req.body);await db.desired(b.id,true);res.json({ok:true,bot:b,message:'Bot cadastrado; conexão automática na fila.'});setImmediate(()=>autoConnect(b.id).catch(console.error))}catch(e){fail(res,e,400)}});
 app.get('/api/bots/:id',auth,async(req,res)=>{try{const b=await db.get(req.params.id);if(!b)return fail(res,new Error('Bot não encontrado'),404);res.json({ok:true,bot:b})}catch(e){fail(res,e)}});
 app.put('/api/bots/:id',auth,async(req,res)=>{try{res.json({ok:true,bot:await db.update(req.params.id,req.body)})}catch(e){fail(res,e,400)}});
@@ -71,13 +71,42 @@ async function refreshAgents(){
   })();
   try{return await refreshInFlight}finally{refreshInFlight=null}
 }
+// Acionamento sob demanda: bot desligado não desperta o Agent por monitoramento.
+// O Agent permanece reservado ao avatar, inclusive durante o repouso do Render.
+const startInFlight=new Set();
+async function wakeForStart(agentRow){
+  if(!agentRow?.approved || !agentRow.agent_url)throw Error('Agent não aprovado ou sem URL cadastrada.');
+  const url=new URL(agentRow.agent_url);
+  if(url.protocol!=='https:' || !/^[a-z0-9-]+\.onrender\.com$/i.test(url.hostname) || url.username || url.password || url.port)
+    throw Error('URL do Agent inválida; utilize o endereço HTTPS do Render.');
+  for(let attempt=1;attempt<=3;attempt++){
+    await db.setAgentCheck(agentRow.id,'waking',{watchdogAttempts:attempt,watchdogExhausted:false});
+    if(await probeUrl(url.origin,55000)){
+      await db.setAgentCheck(agentRow.id,'online',{watchdogAttempts:attempt,watchdogExhausted:false});
+      return;
+    }
+    if(attempt<3)await new Promise(resolve=>setTimeout(resolve,60000));
+  }
+  await db.setAgentCheck(agentRow.id,'offline',{watchdogAttempts:3,watchdogExhausted:true});
+  throw Error('O Agent não respondeu após 3 tentativas de despertar.');
+}
 async function ensureAgentForBot(botId){
-  let b=await db.get(botId,true); if(!b)throw new Error('Bot não encontrado');
-  if(b.agentId){const a=await db.getAgent(b.agentId);if(a&&a.approved){await refreshAgents(true);if(await probeUrl(a.agent_url,9000)){await db.setAgentCheck(a.id,'online');return b}}await db.assignAgent(botId,null);}
-  await refreshAgents(true);
-  const free=await db.firstFreeOnlineAgent();
-  if(!free)throw new Error('Nenhum servidor disponível respondeu. Abra Servidores e use Atualizar para conferir os Agents.');
-  await db.assignAgent(botId,free.id); return db.get(botId,true);
+  let b=await db.get(botId,true);if(!b)throw Error('Bot não encontrado');
+  // Prioridade absoluta ao Agent já vinculado; nunca troca por outro só porque dormiu.
+  if(b.agentId){
+    const a=await db.getAgent(b.agentId);
+    if(a?.approved){await wakeForStart(a);return db.get(botId,true)}
+    throw Error('O Agent vinculado não está aprovado. Verifique em Servidores.');
+  }
+  // Novo avatar: seleciona um Agent livre sem acordar todos os demais.
+  const all=await db.listAgents();
+  const free=all.filter(a=>a.approved&&!a.botId&&a.agentUrl);
+  if(!free.length)throw Error('Nenhum Agent livre e aprovado. Cadastre ou libere um servidor.');
+  const preferred=free.find(a=>a.checkStatus==='online')||free[0];
+  await db.assignAgent(botId,preferred.id);
+  try{await wakeForStart(await db.getAgent(preferred.id))}
+  catch(e){await db.freeAgentForBot(botId);throw e}
+  return db.get(botId,true);
 }
 async function autoConnect(id){try{const b=await ensureAgentForBot(id);await db.desired(id,true);await agent.call(b,'/start','POST',{config:b});await db.log(id,'Conexão automática iniciada')}catch(e){await db.log(id,'Aguardando Agent disponível: '+e.message).catch(()=>{})}}
 async function botAction(req,res,act){
@@ -85,10 +114,15 @@ async function botAction(req,res,act){
     let b=await db.get(req.params.id,true);
     if(!b)return fail(res,new Error('Bot não encontrado'),404);
     if(act==='start'){
-      b=await ensureAgentForBot(b.id);
-      await db.desired(b.id,true);
-      const x=await agent.call(b,'/start','POST',{config:b});
-      return res.json({...x,agentName:b.agentName||''});
+      if(startInFlight.has(Number(b.id)))return res.status(409).json({ok:false,error:'Inicialização já em andamento. Aguarde.'});
+      startInFlight.add(Number(b.id));
+      try{
+        // Intenção explícita primeiro: caso a requisição do navegador caia, a fila pode retomar.
+        await db.desired(b.id,true);
+        b=await ensureAgentForBot(b.id);
+        const x=await agent.call(b,'/start','POST',{config:b});
+        return res.json({...x,agentName:b.agentName||''});
+      }finally{startInFlight.delete(Number(b.id))}
     }
     if(act==='stop'){
       await db.desired(b.id,false);
@@ -97,11 +131,12 @@ async function botAction(req,res,act){
         try{x=await agent.call(b,'/stop','POST')}
         catch(e){x={ok:true,message:'Bot marcado como desligado; servidor não respondeu.'}}
       }
-      await db.freeAgentForBot(b.id);
-      return res.json({...x,message:(x.message||'Bot desligado.')+' Servidor liberado para outro avatar.'});
+      // Não desatribuir: o próximo Ligar deve acordar ESTE Agent, mesmo após repouso.
+      return res.json({...x,message:(x.message||'Bot desligado.')+' Agent reservado; poderá adormecer naturalmente.'});
     }
     if(act==='restart'){
       await db.desired(b.id,true);
+      b=await ensureAgentForBot(b.id);
       return res.json(await agent.call(b,'/restart','POST',{config:b}));
     }
     if(act==='teleport'){const destination=String(req.body?.destination||'');if(!/^https:\/\/maps\.secondlife\.com\/secondlife\/[^/]+\/\d+\/\d+\/\d+\/?$/i.test(destination))throw Error('SLURL inválida');return res.json(await agent.call(b,'/teleport','POST',{destination}));}
@@ -116,7 +151,7 @@ app.delete('/api/bots/:id/routes/:routeId',auth,async(q,r)=>{try{await db.delete
 let schedulerBusy=false;
 async function schedulerTick(){if(schedulerBusy)return;schedulerBusy=true;try{const zone=process.env.BOT_TIMEZONE||'America/Sao_Paulo';const parts=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());const v=Object.fromEntries(parts.map(x=>[x.type,x.value]));const day=`${v.year}-${v.month}-${v.day}`,time=`${v.hour}:${v.minute}`;const due=(await db.q(`SELECT r.* FROM bot_routes r JOIN bots b ON b.id=r.bot_id WHERE r.enabled AND b.desired_online AND r.time_hhmm=$1 AND r.last_run_day IS DISTINCT FROM $2`,[time,day])).rows;for(const route of due){const claimed=await db.q('UPDATE bot_routes SET last_run_day=$2 WHERE id=$1 AND last_run_day IS DISTINCT FROM $2 RETURNING id',[route.id,day]);if(!claimed.rowCount)continue;try{const b=await db.get(route.bot_id,true);const result=await agent.call(b,'/teleport','POST',{destination:route.destination,autoSit:route.auto_sit,objectUUID:route.object_uuid});if(!result.ok)throw Error(result.error||'Teleporte não aceito');await db.log(b.id,'Rota agendada: '+route.destination)}catch(e){await db.log(route.bot_id,'Falha na rota: '+e.message)}}}catch(e){console.error('Agendador:',e.message)}finally{schedulerBusy=false}}
 async function pendingConnections(){try{const all=await db.list();for(const b of all.filter(x=>x.desiredOnline&&!x.agentId).slice(0,5))await autoConnect(b.id)}catch(e){console.error('Fila:',e.message)}}
-app.get('/api/bots/:id/logs',auth,async(req,res)=>{try{const b=await db.get(req.params.id,true);let live=[];try{const x=await agent.call(b,'/logs');live=x.logs||[]}catch{}const stored=await db.logs(b.id);res.json({ok:true,logs:live.length?live:stored})}catch(e){fail(res,e)}});
+app.get('/api/bots/:id/logs',auth,async(req,res)=>{try{const b=await db.get(req.params.id,true);let live=[];if(b.desiredOnline)try{const x=await agent.call(b,'/logs');live=x.logs||[]}catch{}const stored=await db.logs(b.id);res.json({ok:true,logs:live.length?live:stored})}catch(e){fail(res,e)}});
 // Pool de Agents: o Agent se apresenta sozinho; o dono aprova e atribui um bot no painel.
 app.post('/api/agents/register',async(req,res)=>{try{const a=await db.registerAgent(req.body||{});const runtime=await db.agentRuntime(a.agent_key);res.json({ok:true,approved:!!a.approved,agentId:Number(a.id),agentSecret:runtime?.agentSecret||'',botId:runtime?.botId||0,desiredOnline:!!runtime?.desiredOnline,config:runtime?.config||null})}catch(e){fail(res,e,400)}});
 app.get('/api/agents',auth,async(req,res)=>{try{res.json({ok:true,agents:await db.listAgents()})}catch(e){fail(res,e)}});
