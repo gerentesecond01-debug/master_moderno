@@ -30,20 +30,18 @@ async function wakeAgent(id,expectedUrl){
  if(!expected){console.warn(`${prefix} URL do Agent inválida`);return false;}
  try {
   console.log(`${prefix} Consultando prim.json no GitHub`);
-  // Public registry: prefer raw GitHub, avoiding unauthenticated Contents API limits.
-  const raw=await fetch(RAW+'prim.json?ts='+Date.now(),{headers:{'User-Agent':'NEXUS-Master','Accept':'application/json'},signal:AbortSignal.timeout(12000),cache:'no-store'});
-  if(!raw.ok)throw Error(`GitHub raw prim.json HTTP ${raw.status}`);
-  const prim=await raw.json();
+  const source=await fetch(BASE+'prim.json?ref='+BRANCH,{headers:HEADERS,signal:AbortSignal.timeout(12000),cache:'no-store'});
+  if(!source.ok)throw Error(`GitHub prim.json HTTP ${source.status}`);
+  const file=await source.json();
+  const prim=JSON.parse(Buffer.from(file.content.replace(/\s/g,''),'base64').toString('utf8'));
   const u=new URL(String(prim.url||''));
-  // llRequestURL() uses http://simhost-*.agni.secondlife.io:<port>/cap/<uuid>
-  const isSL=(u.protocol==='http:' && /^simhost-[a-z0-9-]+\.agni\.secondlife\.io$/i.test(u.hostname) && /^\/cap\/[0-9a-f-]+\/?$/i.test(u.pathname) && Number(u.port)>0);
-  if(!isSL||u.username||u.password||u.search||u.hash)throw Error('URL do prim inválida ou não registrada');
+  if(u.protocol!=='https:'||u.username||u.password||u.port||!u.hostname.endsWith('.secondlife.com')||!u.pathname.startsWith('/cap/'))throw Error('URL do prim inválida ou não registrada');
   if(prim.status!=='online')throw Error('Prim não está marcado como online');
   console.log(`${prefix} Enviando POST ao prim`);
-  const r=await fetch(u.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret,action:'wake',agent_url:expected}),signal:AbortSignal.timeout(20000),redirect:'error'});
+  const r=await fetch(u.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret,action:'wake',agent_id:String(id)}),signal:AbortSignal.timeout(20000),redirect:'error'});
   const body=(await r.text()).slice(0,140);
   console.log(`${prefix} Resposta do prim: HTTP ${r.status} ${body}`);
-  return r.status===202 && body.includes('WAKE_REQUEST_SENT');
+  return r.status===202 && body.includes('LOOKUP_STARTED');
  } catch(e){console.warn(`${prefix} Falha no despertar: ${e.message}`);return false;}
 }
 
