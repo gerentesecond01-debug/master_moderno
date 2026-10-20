@@ -78,23 +78,33 @@ const startInFlight=new Set();
 const autoConnectCooldown=new Map();
 const AUTO_CONNECT_COOLDOWN_MS=15*60*1000;
 async function wakeForStart(agentRow){
-  if(!agentRow?.approved || !agentRow.agent_url)throw Error('Agent não aprovado ou sem URL cadastrada.');
-  const url=new URL(agentRow.agent_url);
+  if(!agentRow?.approved || !(agentRow.agent_url||agentRow.agentUrl))throw Error('Agent não aprovado ou sem URL cadastrada.');
+  const url=new URL(agentRow.agent_url||agentRow.agentUrl);
   if(url.protocol!=='https:' || !/^[a-z0-9-]+\.onrender\.com$/i.test(url.hostname) || url.username || url.password || url.port)
     throw Error('URL do Agent inválida; utilize o endereço HTTPS do Render.');
+  const origin=url.origin;
+  // O primeiro GET acorda o Render diretamente; prim é fallback, nunca a primeira opção.
   for(let attempt=1;attempt<=3;attempt++){
     await db.setAgentCheck(agentRow.id,'waking',{watchdogAttempts:attempt,watchdogExhausted:false});
-    const accepted=await primBridge.wakeAgent(agentRow.id,url.origin);
-    console.log(`[Master][Agent ${agentRow.id}] Prim ${accepted?'aceitou a solicitação':'não confirmou a solicitação'}; verificando /health`);
-    if(await probeUrl(url.origin,55000)){
+    console.log(`[Master][Agent ${agentRow.id}] Tentativa ${attempt}/3: HTTP direto ${origin}/health`);
+    if(await probeUrl(origin,12000)){
       await db.setAgentCheck(agentRow.id,'online',{watchdogAttempts:attempt,watchdogExhausted:false});
-      console.log(`[Master][Agent ${agentRow.id}] Agent respondeu ao /health`);
+      console.log(`[Master][Agent ${agentRow.id}] Agent respondeu diretamente ao /health`);
       return;
     }
-    if(attempt<3)await new Promise(resolve=>setTimeout(resolve,60000));
+    console.log(`[Master][Agent ${agentRow.id}] Sem resposta direta; acionando prim`);
+    const accepted=await primBridge.wakeAgent(agentRow.id,origin);
+    console.log(`[Master][Agent ${agentRow.id}] Prim ${accepted?'aceitou consulta ao agents.json':'não confirmou'}; aguardando /health`);
+    // O prim confirma somente que iniciou a busca, não que já acordou o Agent.
+    if(await probeUrl(origin,35000)){
+      await db.setAgentCheck(agentRow.id,'online',{watchdogAttempts:attempt,watchdogExhausted:false});
+      console.log(`[Master][Agent ${agentRow.id}] Agent respondeu ao /health após tentativa de despertar`);
+      return;
+    }
+    if(attempt<3)await new Promise(resolve=>setTimeout(resolve,10000));
   }
   await db.setAgentCheck(agentRow.id,'offline',{watchdogAttempts:3,watchdogExhausted:true});
-  throw Error('O Agent não respondeu após 3 tentativas de despertar.');
+  throw Error('O Agent não respondeu após 3 tentativas (HTTP direto e prim). Confira logs [Prim].');
 }
 async function ensureAgentForBot(botId){
   let b=await db.get(botId,true);if(!b)throw Error('Bot não encontrado');
@@ -124,7 +134,7 @@ async function botAction(req,res,act){
     let b=await db.get(req.params.id,true);
     if(!b)return fail(res,new Error('Bot não encontrado'),404);
     if(act==='start'){
-      if(startInFlight.has(Number(b.id)))return res.status(409).json({ok:false,error:'Inicialização já em andamento. Aguarde.'});
+      if(startInFlight.has(Number(b.id)))return res.status(409).json({ok:false,error:'Já existe uma tentativa de conexão automática em andamento para este avatar. Aguarde o término; o bloqueio é liberado mesmo em caso de falha.'});
       startInFlight.add(Number(b.id));
       try{
         // Intenção explícita primeiro: caso a requisição do navegador caia, a fila pode retomar.

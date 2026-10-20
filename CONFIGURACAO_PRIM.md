@@ -20,3 +20,9 @@
 - Se aparecer `Prim não está marcado como online`, confira o registro do prim e o texto flutuante no Second Life.
 - Se aparecer `HTTP 403`, confira o segredo. Se aparecer `HTTP 429`, o prim já está processando outro comando.
 - Se o prim retornar `LOOKUP_STARTED`, mas o Agent não acordar, verifique no chat do proprietário do prim mensagens `NEXUS agents.json` e `NEXUS: despertar ... respondeu HTTP ...`.
+
+## Ajuste de recuperação (20/10/2026)
+- O botão Ligar tenta GET /health diretamente no Agent (até 12 s). Se não responder, solicita o despertar ao prim e verifica /health (até 35 s). São no máximo 3 ciclos com pausa de 10 s, sem acordar outros Agents.
+- O Watchdog também tenta HTTP direto antes do prim.
+- Uma conexão automática já em andamento continua protegida contra duplicação. O botão Ligar informa o motivo do bloqueio temporário; a operação o libera ao finalizar. Não há desbloqueio forçado que poderia duplicar processos.
+- O retorno `LOOKUP_STARTED` do prim não garante que o prim conseguiu consultar agents.json ou enviar GET ao Agent; verifique as mensagens do proprietário do prim.
