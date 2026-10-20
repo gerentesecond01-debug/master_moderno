@@ -5,7 +5,9 @@ const db = require('./database');
 const primBridge=require('./primBridge');
 const MAX_ATTEMPTS = 3;
 const GAP_MS = 60000;
-const TIMEOUT_MS = 55000;
+const TIMEOUT_MS = 12000;
+const PRIM_CONFIRM_MS = 25000;
+const RETRY_AFTER_MS = 15 * 60 * 1000;
 const STALE_MS = 135000;
 const active = new Set();
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -23,11 +25,19 @@ async function ping(url) {
     return response.ok;
   } finally { clearTimeout(timer); }
 }
+async function pingAfterPrim(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PRIM_CONFIRM_MS);
+  try {
+    const response = await fetch(safeUrl(url), {method:'GET',signal:controller.signal,redirect:'error',cache:'no-store'});
+    return response.ok;
+  } finally { clearTimeout(timer); }
+}
 async function setState(agent, state, attempt, error='') {
   await db.setAgentCheck(agent.id, state, {
     watchdogAttempts: attempt,
     watchdogError: error,
-    watchdogExhausted: state === 'offline' || state === 'http_online',
+    watchdogExhausted: state === 'offline',
     watchdogUpdatedAt: new Date().toISOString()
   });
 }
@@ -36,7 +46,8 @@ async function recover(agent, manual=false) {
   if (!agent.approved || !agent.agentUrl || active.has(id)) return;
   if (!manual && !(await db.list()).some(b=>b.desiredOnline && Number(b.agentId)===id)) return;
   const previous = agent.status || {};
-  if (!manual && previous.watchdogExhausted) return;
+  const lastAttempt = Date.parse(previous.watchdogUpdatedAt || '') || 0;
+  if (!manual && previous.watchdogExhausted && Date.now() - lastAttempt < RETRY_AFTER_MS) return;
   active.add(id);
   try {
     const url = safeUrl(agent.agentUrl);
@@ -51,7 +62,7 @@ async function recover(agent, manual=false) {
       await setState(agent,'waking',attempt);
       console.log(`[Watchdog] ${agent.name}: despertar ${attempt}/${MAX_ATTEMPTS}`);
       let ok=false, error='';
-      try { console.log(`[Watchdog] ${agent.name}: tentativa HTTP direta`); ok=await ping(url); if(!ok){const accepted=await primBridge.wakeAgent(id,agent.agentUrl); console.log(`[Watchdog] ${agent.name}: prim ${accepted?'aceitou':'não confirmou'} a consulta; verificando /health`);ok=await ping(url);} } catch(e) { error=e.message; }
+      try { console.log(`[Watchdog] ${agent.name}: tentativa HTTP direta`); ok=await ping(url); if(!ok){const accepted=await primBridge.wakeAgent(id,agent.agentUrl); console.log(`[Watchdog] ${agent.name}: prim ${accepted?'aceitou':'não confirmou'} a consulta; verificando /health`);ok=await pingAfterPrim(url);} } catch(e) { error=e.message; }
       if (ok) {
         await setState(agent,'http_online',attempt,'HTTP respondeu; aguardando registro do Agent');
         console.log(`[Watchdog] ${agent.name} respondeu ao HTTP; aguardando heartbeat`);
@@ -77,12 +88,15 @@ async function observe() {
   const agents=(await db.listAgents()).filter(a=>a.approved && a.agentUrl && desiredIds.has(Number(a.id)));
   for (const a of agents) {
     const age=Date.now()-new Date(a.lastSeen).getTime();
-    if (!Number.isFinite(age)) continue;
-    if (age < STALE_MS) {
+    // Sem heartbeat também significa indisponível: não ignorar Agent novo.
+    const effectiveAge = Number.isFinite(age) ? age : STALE_MS + 1;
+    if (effectiveAge < STALE_MS) {
       // A confirmação de vida libera novas tentativas numa futura queda.
       if (a.checkStatus !== 'online' || a.status?.watchdogExhausted)
         await setState(a,'online',0);
-    } else if (!a.status?.watchdogExhausted && !active.has(a.id)) {
+    } else if (!active.has(Number(a.id)) &&
+      (!a.status?.watchdogExhausted ||
+       Date.now() - (Date.parse(a.status?.watchdogUpdatedAt || '') || 0) >= RETRY_AFTER_MS)) {
       recover(a).catch(e=>console.error('Watchdog:',e.message));
     }
   }

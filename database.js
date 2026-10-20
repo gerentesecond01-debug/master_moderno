@@ -63,7 +63,16 @@ async function update(id,d){const old=(await q('SELECT * FROM bots WHERE id=$1',
  const r=await q(`UPDATE bots SET name=$1,first_name=$2,last_name=$3,sl_password_enc=$4,start_location=$5,agent_url=$6,agent_secret_enc=$7,default_group_id=$8,default_role_id=$9,default_role_name=$10,home_url=$11,home_object_uuid=$12,auto_sit=$13,auto_go_home=$14,auto_accept_groups=$15,allow_teleport_links=$16,allow_rlv=$17,only_allowed_admins=$18,admin_names=$19,admin_uuids=$20,welcome_enabled=$21,welcome_message=$22,announcement_enabled=$23,announcement_minutes=$24,announcement_message=$25,reconnect_ms=$26,region_recovery_ms=$27,updated_at=now() WHERE id=$28 RETURNING *`,vals);if(Object.prototype.hasOwnProperty.call(d,'agentId'))await assignAgent(id,d.agentId||null);return pub((await q('SELECT * FROM bots WHERE id=$1',[id])).rows[0]);}
 async function del(id){await q('DELETE FROM bots WHERE id=$1',[id])}
 async function desired(id,v){await q('UPDATE bots SET desired_online=$2,updated_at=now() WHERE id=$1',[id,!!v])}
-async function heartbeat(id,s){await q('UPDATE bots SET last_agent_seen=now(),last_phase=$2,last_reason=$3,last_online=$4 WHERE id=$1',[id,String(s.phase||'unknown').slice(0,80),String(s.lastReason||'').slice(0,500),!!s.online])}
+async function heartbeat(id,s){
+  await q('UPDATE bots SET last_agent_seen=now(),last_phase=$2,last_reason=$3,last_online=$4 WHERE id=$1',
+    [id,String(s.phase||'unknown').slice(0,80),String(s.lastReason||'').slice(0,500),!!s.online]);
+  // Atualiza a mesma coluna consultada pelo Watchdog.
+  await q(`UPDATE agents SET last_seen=now(),
+    status=jsonb_set(jsonb_set(COALESCE(status,'{}'::jsonb),
+      '{watchdogExhausted}','false'::jsonb,true),
+      '{masterCheck}','"online"'::jsonb,true)
+    WHERE id=(SELECT agent_id FROM bots WHERE id=$1)`,[id]);
+}
 async function log(id,line){await q('INSERT INTO bot_logs(bot_id,line) VALUES($1,$2)',[id,String(line).slice(0,4000)]);await q(`DELETE FROM bot_logs WHERE bot_id=$1 AND id NOT IN (SELECT id FROM bot_logs WHERE bot_id=$1 ORDER BY id DESC LIMIT 300)`,[id])}
 async function logs(id){return (await q('SELECT created_at,line FROM bot_logs WHERE bot_id=$1 ORDER BY id DESC LIMIT 150',[id])).rows.reverse().map(x=>`[${x.created_at.toISOString()}] ${x.line}`)}
 
