@@ -7,8 +7,6 @@ const MAX_ATTEMPTS = 3;
 const GAP_MS = 60000;
 const TIMEOUT_MS = 55000;
 const STALE_MS = 135000;
-// Após 3 falhas, aguardar 15 minutos antes de um novo ciclo automático.
-const RETRY_COOLDOWN_MS = 15 * 60 * 1000;
 const active = new Set();
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 function safeUrl(value) {
@@ -29,8 +27,7 @@ async function setState(agent, state, attempt, error='') {
   await db.setAgentCheck(agent.id, state, {
     watchdogAttempts: attempt,
     watchdogError: error,
-    watchdogExhausted: state === 'offline',
-    watchdogRetryAt: state === 'offline' ? new Date(Date.now() + RETRY_COOLDOWN_MS).toISOString() : null,
+    watchdogExhausted: state === 'offline' || state === 'http_online',
     watchdogUpdatedAt: new Date().toISOString()
   });
 }
@@ -39,7 +36,7 @@ async function recover(agent, manual=false) {
   if (!agent.approved || !agent.agentUrl || active.has(id)) return;
   if (!manual && !(await db.list()).some(b=>b.desiredOnline && Number(b.agentId)===id)) return;
   const previous = agent.status || {};
-  if (!manual && previous.watchdogExhausted && Date.now() < Date.parse(previous.watchdogRetryAt || 0)) return;
+  if (!manual && previous.watchdogExhausted) return;
   active.add(id);
   try {
     const url = safeUrl(agent.agentUrl);
@@ -80,16 +77,12 @@ async function observe() {
   const agents=(await db.listAgents()).filter(a=>a.approved && a.agentUrl && desiredIds.has(Number(a.id)));
   for (const a of agents) {
     const age=Date.now()-new Date(a.lastSeen).getTime();
-    if (!Number.isFinite(age)) {
-      // Um Agent recém-cadastrado sem heartbeat não pode ficar invisível ao Watchdog.
-      const createdAge=Date.now()-new Date(a.createdAt).getTime();
-      if (Number.isFinite(createdAge) && createdAge < STALE_MS) continue;
-    }
+    if (!Number.isFinite(age)) continue;
     if (age < STALE_MS) {
       // A confirmação de vida libera novas tentativas numa futura queda.
       if (a.checkStatus !== 'online' || a.status?.watchdogExhausted)
         await setState(a,'online',0);
-    } else if ((!a.status?.watchdogExhausted || Date.now() >= Date.parse(a.status?.watchdogRetryAt || 0)) && !active.has(Number(a.id))) {
+    } else if (!a.status?.watchdogExhausted && !active.has(a.id)) {
       recover(a).catch(e=>console.error('Watchdog:',e.message));
     }
   }
