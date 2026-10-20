@@ -51,7 +51,7 @@ async function recover(agent, manual=false) {
       await setState(agent,'waking',attempt);
       console.log(`[Watchdog] ${agent.name}: despertar ${attempt}/${MAX_ATTEMPTS}`);
       let ok=false, error='';
-      try { await primBridge.wakeAgent(id,agent.agentUrl).catch(()=>false); ok=await ping(url); } catch(e) { error=e.message; }
+      try { const accepted=await primBridge.wakeAgent(id,agent.agentUrl); console.log(`[Watchdog] ${agent.name}: prim ${accepted?'aceitou':'não confirmou'} o comando; verificando /health`);ok=await ping(url); } catch(e) { error=e.message; }
       if (ok) {
         await setState(agent,'http_online',attempt,'HTTP respondeu; aguardando registro do Agent');
         console.log(`[Watchdog] ${agent.name} respondeu ao HTTP; aguardando heartbeat`);

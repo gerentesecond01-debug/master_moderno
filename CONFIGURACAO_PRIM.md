@@ -10,3 +10,13 @@
 **Segurança:** revogue o token exposto anteriormente. A técnica de autenticação do GitHub via token embutido na URL é mantida a pedido, mas não é garantida e pode retornar 401/403; nesse caso será necessário usar um intermediário com autenticação adequada. Não publique segredos em JSON.
 
 **Limitações:** O Master mantém fallback de ping direto. O prim confirma apenas o envio da tentativa, não que o Agent esteja pronto. As alterações não foram testadas em uma região Second Life real nem no Render.
+
+## Correção de diagnóstico (20/10/2026)
+- O Master registra em logs: consulta a `prim.json`, POST ao prim, status HTTP recebido e verificação `/health` do Agent.
+- Resposta HTTP 202 do prim **não** significa que o Agent está online. O Master agora aguarda `/health` antes de iniciar o bot.
+- A reconexão automática após falha tem intervalo mínimo de 15 minutos para não repetir ciclos de três tentativas continuamente. A ação manual continua disponível.
+- Se aparecer `MASTER_SECRET ausente ou com menos de 20 caracteres`, configure no Render o mesmo segredo longo usado no script LSL.
+- Se aparecer `GitHub prim.json HTTP 404`, confira se `prim.json` existe no repositório `gerentesecond01-debug/prim` na branch `main`.
+- Se aparecer `Prim não está marcado como online`, confira o registro do prim e o texto flutuante no Second Life.
+- Se aparecer `HTTP 403`, confira o segredo. Se aparecer `HTTP 429`, o prim já está processando outro comando.
+- Se o prim retornar `LOOKUP_STARTED`, mas o Agent não acordar, verifique no chat do proprietário do prim mensagens `NEXUS agents.json` e `NEXUS: despertar ... respondeu HTTP ...`.

@@ -75,6 +75,8 @@ async function refreshAgents(){
 // Acionamento sob demanda: bot desligado não desperta o Agent por monitoramento.
 // O Agent permanece reservado ao avatar, inclusive durante o repouso do Render.
 const startInFlight=new Set();
+const autoConnectCooldown=new Map();
+const AUTO_CONNECT_COOLDOWN_MS=15*60*1000;
 async function wakeForStart(agentRow){
   if(!agentRow?.approved || !agentRow.agent_url)throw Error('Agent não aprovado ou sem URL cadastrada.');
   const url=new URL(agentRow.agent_url);
@@ -82,8 +84,11 @@ async function wakeForStart(agentRow){
     throw Error('URL do Agent inválida; utilize o endereço HTTPS do Render.');
   for(let attempt=1;attempt<=3;attempt++){
     await db.setAgentCheck(agentRow.id,'waking',{watchdogAttempts:attempt,watchdogExhausted:false});
-    if(await primBridge.wakeAgent(agentRow.id,url.origin).catch(e=>{console.warn('[Prim]',e.message);return false}) || await probeUrl(url.origin,55000)){
+    const accepted=await primBridge.wakeAgent(agentRow.id,url.origin);
+    console.log(`[Master][Agent ${agentRow.id}] Prim ${accepted?'aceitou a solicitação':'não confirmou a solicitação'}; verificando /health`);
+    if(await probeUrl(url.origin,55000)){
       await db.setAgentCheck(agentRow.id,'online',{watchdogAttempts:attempt,watchdogExhausted:false});
+      console.log(`[Master][Agent ${agentRow.id}] Agent respondeu ao /health`);
       return;
     }
     if(attempt<3)await new Promise(resolve=>setTimeout(resolve,60000));
@@ -109,7 +114,11 @@ async function ensureAgentForBot(botId){
   catch(e){await db.freeAgentForBot(botId);throw e}
   return db.get(botId,true);
 }
-async function autoConnect(id){try{const b=await ensureAgentForBot(id);await db.desired(id,true);await agent.call(b,'/start','POST',{config:b});await db.log(id,'Conexão automática iniciada')}catch(e){await db.log(id,'Aguardando Agent disponível: '+e.message).catch(()=>{})}}
+async function autoConnect(id){
+  if(startInFlight.has(Number(id)))return;
+  if(Date.now()<(autoConnectCooldown.get(Number(id))||0))return;
+  startInFlight.add(Number(id));
+  try{const b=await ensureAgentForBot(id);await db.desired(id,true);await agent.call(b,'/start','POST',{config:b});await db.log(id,'Conexão automática iniciada');autoConnectCooldown.delete(Number(id))}catch(e){autoConnectCooldown.set(Number(id),Date.now()+AUTO_CONNECT_COOLDOWN_MS);await db.log(id,'Aguardando Agent disponível: '+e.message).catch(()=>{})}finally{startInFlight.delete(Number(id))}}
 async function botAction(req,res,act){
   try{
     let b=await db.get(req.params.id,true);
