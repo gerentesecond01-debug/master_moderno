@@ -2,6 +2,7 @@
 // Recuperação individual por URL; o Master detecta falha pelo registro periódico
 // que o Agent já envia. Nenhum GET é enviado a Agents com heartbeat recente.
 const db = require('./database');
+const primBridge=require('./primBridge');
 const MAX_ATTEMPTS = 3;
 const GAP_MS = 60000;
 const TIMEOUT_MS = 55000;
@@ -50,7 +51,7 @@ async function recover(agent, manual=false) {
       await setState(agent,'waking',attempt);
       console.log(`[Watchdog] ${agent.name}: despertar ${attempt}/${MAX_ATTEMPTS}`);
       let ok=false, error='';
-      try { ok=await ping(url); } catch(e) { error=e.message; }
+      try { await primBridge.wakeAgent(id,agent.agentUrl).catch(()=>false); ok=await ping(url); } catch(e) { error=e.message; }
       if (ok) {
         await setState(agent,'http_online',attempt,'HTTP respondeu; aguardando registro do Agent');
         console.log(`[Watchdog] ${agent.name} respondeu ao HTTP; aguardando heartbeat`);

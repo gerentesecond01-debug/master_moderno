@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express=require('express');const session=require('express-session');const PgSession=require('connect-pg-simple')(session);const {Pool}=require('pg');const path=require('path');const db=require('./database');const agent=require('./agentClient');const watchdog=require('./agentWatchdog');
 const {encryptBackup,decryptBackup}=require('./backupCrypto');
+const primBridge=require('./primBridge');
 const app=express();const PORT=Number(process.env.PORT||10000);
 // Render termina o HTTPS no proxy. Sem trust proxy, cookies 'secure' podem não ser gravados.
 app.set('trust proxy',1);
@@ -81,7 +82,7 @@ async function wakeForStart(agentRow){
     throw Error('URL do Agent inválida; utilize o endereço HTTPS do Render.');
   for(let attempt=1;attempt<=3;attempt++){
     await db.setAgentCheck(agentRow.id,'waking',{watchdogAttempts:attempt,watchdogExhausted:false});
-    if(await probeUrl(url.origin,55000)){
+    if(await primBridge.wakeAgent(agentRow.id,url.origin).catch(e=>{console.warn('[Prim]',e.message);return false}) || await probeUrl(url.origin,55000)){
       await db.setAgentCheck(agentRow.id,'online',{watchdogAttempts:attempt,watchdogExhausted:false});
       return;
     }
@@ -153,13 +154,13 @@ async function schedulerTick(){if(schedulerBusy)return;schedulerBusy=true;try{co
 async function pendingConnections(){try{const all=await db.list();for(const b of all.filter(x=>x.desiredOnline&&!x.agentId).slice(0,5))await autoConnect(b.id)}catch(e){console.error('Fila:',e.message)}}
 app.get('/api/bots/:id/logs',auth,async(req,res)=>{try{const b=await db.get(req.params.id,true);let live=[];if(b.desiredOnline)try{const x=await agent.call(b,'/logs');live=x.logs||[]}catch{}const stored=await db.logs(b.id);res.json({ok:true,logs:live.length?live:stored})}catch(e){fail(res,e)}});
 // Pool de Agents: o Agent se apresenta sozinho; o dono aprova e atribui um bot no painel.
-app.post('/api/agents/register',async(req,res)=>{try{const a=await db.registerAgent(req.body||{});const runtime=await db.agentRuntime(a.agent_key);res.json({ok:true,approved:!!a.approved,agentId:Number(a.id),agentSecret:runtime?.agentSecret||'',botId:runtime?.botId||0,desiredOnline:!!runtime?.desiredOnline,config:runtime?.config||null})}catch(e){fail(res,e,400)}});
+app.post('/api/agents/register',async(req,res)=>{try{const a=await db.registerAgent(req.body||{});primBridge.scheduleSync(db);const runtime=await db.agentRuntime(a.agent_key);res.json({ok:true,approved:!!a.approved,agentId:Number(a.id),agentSecret:runtime?.agentSecret||'',botId:runtime?.botId||0,desiredOnline:!!runtime?.desiredOnline,config:runtime?.config||null})}catch(e){fail(res,e,400)}});
 app.get('/api/agents',auth,async(req,res)=>{try{res.json({ok:true,agents:await db.listAgents()})}catch(e){fail(res,e)}});
 app.post('/api/agents/refresh',auth,async(req,res)=>{try{res.json({ok:true,agents:await refreshAgents()})}catch(e){fail(res,e,500)}});
 app.post('/api/agents/:id/wake',auth,async(req,res)=>{try{const a=(await db.listAgents()).find(x=>x.id===Number(req.params.id));if(!a||!a.approved)return fail(res,new Error('Agent não aprovado'),404);watchdog.recover(a,true).catch(e=>console.error('Despertar manual:',e));res.json({ok:true,message:'Tentativa de recuperação iniciada'})}catch(e){fail(res,e)}});
-app.put('/api/agents/:id',auth,async(req,res)=>{try{res.json({ok:true,agent:await db.updateAgent(req.params.id,req.body||{})})}catch(e){fail(res,e,400)}});
-app.post('/api/agents/:id/approve',auth,async(req,res)=>{try{res.json({ok:true,agent:await db.approveAgent(req.params.id,req.body?.name||'')})}catch(e){fail(res,e,400)}});
-app.delete('/api/agents/:id',auth,async(req,res)=>{try{await db.deleteAgent(req.params.id);res.json({ok:true})}catch(e){fail(res,e,400)}});
+app.put('/api/agents/:id',auth,async(req,res)=>{try{res.json({ok:true,agent:await db.updateAgent(req.params.id,req.body||{})});primBridge.scheduleSync(db)}catch(e){fail(res,e,400)}});
+app.post('/api/agents/:id/approve',auth,async(req,res)=>{try{res.json({ok:true,agent:await db.approveAgent(req.params.id,req.body?.name||'')});primBridge.scheduleSync(db)}catch(e){fail(res,e,400)}});
+app.delete('/api/agents/:id',auth,async(req,res)=>{try{await db.deleteAgent(req.params.id);res.json({ok:true});primBridge.scheduleSync(db)}catch(e){fail(res,e,400)}});
 app.post('/api/bots/:id/assign',auth,async(req,res)=>{try{await db.assignAgent(req.params.id,req.body?.agentId||null);res.json({ok:true,bot:await db.get(req.params.id)})}catch(e){fail(res,e,400)}});
 
 // Agent usa esta rota para recuperar a configuração após restart do Render.
@@ -171,6 +172,6 @@ app.post('/api/system/cleanup',auth,async(req,res)=>{try{res.json({ok:true,...aw
 app.post('/api/system/backup',auth,async(req,res)=>{try{const data=await db.exportBackup();const pkg=encryptBackup(data,req.body?.password);const name=`sl-bot-backup-${new Date().toISOString().slice(0,10)}.slbackup`;res.setHeader('Content-Type','application/octet-stream');res.setHeader('Content-Disposition',`attachment; filename="${name}"`);res.send(JSON.stringify(pkg))}catch(e){fail(res,e,400)}});
 app.post('/api/system/restore',auth,async(req,res)=>{try{const data=decryptBackup(req.body?.backup,req.body?.password);const out=await db.restoreBackup(data);res.json({ok:true,...out})}catch(e){fail(res,new Error('Não foi possível restaurar: '+(e.message||e)),400)}});
 app.get('/health',(_q,r)=>r.send('ok'));
-db.init().then(()=>{setInterval(()=>db.cleanupLogs(Number(process.env.LOG_RETENTION_DAYS||30)).catch(e=>console.warn('Limpeza de logs:',e.message)),6*60*60*1000);return app.listen(PORT,'0.0.0.0',()=>console.log('Master Panel ativo na porta',PORT))}).catch(e=>{console.error(e);process.exit(1)});
+db.init().then(()=>{primBridge.scheduleSync(db);setInterval(()=>db.cleanupLogs(Number(process.env.LOG_RETENTION_DAYS||30)).catch(e=>console.warn('Limpeza de logs:',e.message)),6*60*60*1000);return app.listen(PORT,'0.0.0.0',()=>console.log('Master Panel ativo na porta',PORT))}).catch(e=>{console.error(e);process.exit(1)});
 
 new Promise(resolve=>setTimeout(resolve,5000)).then(()=>db.initRoutes()).then(()=>{setInterval(schedulerTick,20000);setInterval(pendingConnections,60000);setInterval(()=>watchdog.observe().catch(e=>console.error('Watchdog:',e.message)),90000);watchdog.observe().catch(console.error);pendingConnections()}).catch(e=>console.error('Rotas:',e.message));
