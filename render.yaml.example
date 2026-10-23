@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: sl-bot-agent
+    name: sl-bot-master
     runtime: node
     buildCommand: npm install
     startCommand: npm start
