@@ -25,3 +25,10 @@ main{margin:0;flex:1;min-width:0;max-width:none;padding:13px 15px;background:#e1
 
 /* Controle PRO no próprio perfil do avatar, sem página externa */
 .workspace-pro .pro-layout{margin:0}.workspace-pro .pro-header{display:none}.workspace-pro .pro-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.workspace-pro .pro-output{margin-top:12px}.workspace-pro .pro-tabs{overflow-x:auto}.workspace-pro .pro-module{min-width:0}.workspace-pro .pro-module input{max-width:100%}@media(max-width:1100px){.workspace-pro .pro-grid{grid-template-columns:1fr}}
+
+/* NEXUS: acesso permanente aos convites de grupos */
+.menubar .prim-top-link{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;padding:5px 13px;font-size:12px;font-weight:700;color:#15517d;text-decoration:none;background:#d9e9fa;border-left:1px solid #aab8c7;border-right:1px solid #aab8c7;height:100%}
+.menubar .prim-top-link:hover{background:#c5dff7;color:#093b60}
+.workbench aside .nexus-prim-link{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 12px;margin:5px 0;border:1px solid #8fb4d7;background:#d8e9f8;color:#164d79!important;border-radius:5px;text-decoration:none;font-size:12px;font-weight:750;white-space:nowrap}
+.workbench aside .nexus-prim-link:hover{background:#c4e1fa;border-color:#5698c8}
+@media(max-width:720px){.menubar .prim-top-link{flex:none;padding:5px 12px}.workbench aside .nexus-prim-link{display:none}}
