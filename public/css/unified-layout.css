@@ -1,0 +1,31 @@
+/* NEXUS: identidade única e navegação exclusivamente lateral. */
+body{padding-top:35px!important;padding-bottom:25px!important;background:#dce3eb!important;color:#202b38!important;font:13px "Segoe UI",Tahoma,Arial,sans-serif!important}
+.windowbar{height:35px;position:fixed;z-index:50;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;padding:0 12px;background:linear-gradient(#345b82,#234465);color:white;border-bottom:1px solid #173450}
+.windowlogo{width:21px;height:21px;background:#d8e8fa;color:#234465;border-radius:3px;display:grid;place-items:center;font-weight:900}
+.windowcaption{font-size:12px;opacity:.85}.windowright{margin-left:auto;font-size:10px;letter-spacing:.05em}
+.workbench{display:flex;min-height:calc(100vh - 60px)!important}
+.workbench>aside{position:sticky!important;top:35px!important;inset:auto!important;flex:0 0 205px!important;width:205px!important;height:calc(100vh - 60px)!important;min-height:0;background:#e9eef5!important;border-right:1px solid #aab8c7!important;padding:12px 9px!important;display:flex!important;flex-direction:column!important;z-index:2;box-shadow:none!important}
+.workbench .brand{display:flex;align-items:center;gap:8px;padding:4px 5px 15px!important}
+.workbench .brandmark{width:30px;height:30px;border-radius:4px;background:#345e87;color:white;border:0;box-shadow:none;display:grid;place-items:center;font-weight:900}
+.workbench .brand b{font-size:12px;letter-spacing:0;color:#243b51}.workbench .brand small{display:block;font-size:9px;color:#6c7b89;letter-spacing:1px}
+.workbench .navgroup{margin:4px 0 16px}.workbench .navgroup>span{display:block;color:#6b7886;padding:0 8px 6px;font-size:10px;font-weight:800;letter-spacing:.1em}
+.workbench aside .navgroup button,.workbench aside .navgroup .nav,.workbench aside .navgroup .nexus-prim-link{display:block;width:100%;text-align:left;min-width:0;padding:8px 9px!important;margin:1px 0!important;border:1px solid transparent!important;border-radius:3px!important;background:transparent!important;color:#2d3d4c!important;text-decoration:none;font:500 12px "Segoe UI",sans-serif!important;box-shadow:none!important;white-space:normal}
+.workbench aside .navgroup button:hover,.workbench aside .navgroup button.active,.workbench aside .navgroup .nav:hover,.workbench aside .navgroup .nav.active,.workbench aside .navgroup .nexus-prim-link:hover{background:#d3e3f4!important;border-color:#a5bfd8!important;color:#164b78!important}
+.workbench aside .navgroup .nav.active{font-weight:700!important;border-left:3px solid #3973a4!important}
+.workbench aside .nexus-prim-link span{float:right}.workbench aside .sidefoot{margin-top:auto;border-top:1px solid #c3ced9;padding:12px 5px;color:#728091;font-size:10px;line-height:1.7}
+.workbench>main{margin:0!important;flex:1;min-width:0;max-width:none!important;padding:13px 15px 28px!important;background:#e1e7ee!important;color:#253443!important}
+.statusbar{position:fixed;z-index:51;bottom:0;left:0;right:0;height:25px;background:#f4f7fa;border-top:1px solid #aab9c8;display:flex;gap:0;color:#586b7c;font-size:10px}.statusbar span{padding:5px 14px;border-right:1px solid #c7d2de}.statusbar span:last-child{margin-left:auto;border-left:1px solid #c7d2de;border-right:0}
+/* Página de convites com a mesma paleta e componentes do Master */
+.layout .topbar{margin:0 0 10px;padding:2px 1px 8px;border-bottom:1px solid #bcc8d5;display:block}.layout .topbar h1{font-size:17px;font-weight:650;color:#253a50;margin:0}.layout .topbar p{font-size:11px;color:#647588;margin:3px 0}
+.layout .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.layout .stat,.layout .panel,.layout .help{background:#fff!important;border:1px solid #b9c7d5!important;border-radius:4px!important;box-shadow:0 1px 2px #1d355015!important;color:#253443!important}
+.layout .stat{padding:13px 15px}.layout .stat span,.layout .stat small{color:#637386}.layout .stat strong{font-size:26px;color:#24567f}
+.layout .panel{padding:15px}.layout .panel h2{font-size:16px;color:#253a50}.layout .panel p,.layout .help p{color:#637386}.layout .panel-head{margin-bottom:12px}
+.layout input,.layout select{background:#fff!important;color:#253443!important;border:1px solid #aab9c8!important;border-radius:3px!important;padding:7px 9px!important;font:inherit!important}
+.layout button{background:#356a9b!important;color:white!important;border:1px solid #28547c!important;border-radius:3px!important;padding:7px 10px!important;font:600 12px "Segoe UI",sans-serif!important}
+.layout button.danger{background:#b04b50!important;border-color:#963a3e!important}.layout .prim-card{background:#f7f9fc!important;border:1px solid #c0ceda!important;border-radius:4px!important;padding:15px}
+.layout .prim-card h3{color:#253a50}.layout .ids{background:#eef3f8!important;border:1px solid #d1dce7!important;border-radius:3px!important}.layout .id-row span,.layout .field{color:#536a7e!important}.layout .id-row code{color:#344b61}
+.layout .status.approved{background:#d8f2e2;color:#226842}.layout .status.pending{background:#fff0cc;color:#865d17}.layout .help{padding:12px 15px;margin-top:12px}.layout .help-icon{background:#d9e9fa;color:#24567f;border-radius:3px}.layout #msg:not(:empty){background:#e3effa;color:#24567f;border-radius:3px}.layout #msg.error{background:#fbe3e5;color:#a03841}
+@media(max-width:850px){.workbench>aside{flex:0 0 165px!important;width:165px!important}.layout .panel-head{flex-wrap:wrap}.layout .stats{gap:7px}}
+@media(max-width:720px){.workbench{display:block!important}.workbench>aside{position:relative!important;top:auto!important;width:100%!important;height:auto!important;min-height:0!important;display:block!important;border-right:0!important;border-bottom:1px solid #aab8c7!important}.workbench .navgroup{display:flex!important;flex-wrap:wrap;gap:3px}.workbench .navgroup>span{width:100%}.workbench aside .navgroup button,.workbench aside .navgroup .nav,.workbench aside .navgroup .nexus-prim-link{width:auto!important;display:inline-flex!important}.workbench>main{padding:10px!important}.layout .stats{grid-template-columns:repeat(3,minmax(0,1fr))}.layout .stat{padding:9px}.layout .stat strong{font-size:22px}.layout .panel-head{display:block}.layout .tools{margin-top:10px}}
+@media(max-width:480px){.layout .stats{grid-template-columns:1fr}.layout .tools>*{width:100%}}
