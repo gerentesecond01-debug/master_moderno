@@ -22,24 +22,3 @@ main{margin:0;flex:1;min-width:0;max-width:none;padding:13px 15px;background:#e1
 .avatar-region{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .workspace-body{padding:8px 11px}.workspace-tabcontent{min-height:100px}
 @media(max-width:1050px){.workspace-live-cards{grid-template-columns:1fr}.workspace-live-card .live-region,.workspace-live-card .live-status{font-size:17px}}
-
-/* Programações ficam em uma única aba, sem botão duplicado na barra de ações. */
-.workspace-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
-.workspace-route-row{display:grid;grid-template-columns:75px minmax(0,1fr) 65px;gap:10px;padding:9px;border-bottom:1px solid #e0e7ef;font-size:12px;align-items:center}
-.workspace-route-row strong{overflow-wrap:anywhere}
-
-/* Revisão: formulários legíveis em todos os estados, inclusive nos Agents. */
-#app input:not([type=checkbox]):not([type=radio]),#app textarea,#app select,
-#modalOverlay input:not([type=checkbox]):not([type=radio]),#modalOverlay textarea,#modalOverlay select {
-  background:#ffffff!important;color:#213348!important;border:1px solid #a9bacb!important;
-  -webkit-text-fill-color:#213348;opacity:1!important;box-shadow:none;
-}
-#app input:disabled,#app input:read-only,#modalOverlay input:disabled {
-  background:#edf1f5!important;color:#4c5c6d!important;-webkit-text-fill-color:#4c5c6d;opacity:1!important;
-}
-#app input::placeholder,#modalOverlay input::placeholder{color:#78889a!important;opacity:1}
-#app input:focus,#modalOverlay input:focus{border-color:#3075aa!important;outline:2px solid #80b8e4;outline-offset:0}
-.serverrow input,.serverrow input:disabled,.serverrow input:read-only{min-width:0}
-.workspace-action-divider{width:1px;background:#c2cfdd;align-self:stretch;margin:0 5px}
-.workspace-actions button{white-space:nowrap}
-@media(max-width:800px){.workspace-action-divider{display:none}}

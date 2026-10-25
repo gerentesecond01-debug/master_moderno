@@ -172,6 +172,7 @@ async function botAction(req,res,act){
   }catch(e){fail(res,e,503)}
 }
 for(const a of ['start','stop','restart','home','invite','teleport'])app.post(`/api/bots/:id/${a}`,auth,(q,r)=>botAction(q,r,a));
+app.post('/api/bots/:id/nexus-pro',auth,async(q,r)=>{try{const b=await db.get(q.params.id,true);if(!b)return fail(r,new Error('Bot não encontrado'),404);r.json(await agent.call(b,'/nexus-pro','POST',q.body||{}))}catch(e){fail(r,e)}});
 app.get('/api/bots/:id/routes',auth,async(q,r)=>{try{r.json({ok:true,routes:await db.routes(q.params.id)})}catch(e){fail(r,e)}});
 app.post('/api/bots/:id/routes',auth,async(q,r)=>{try{await db.addRoute(q.params.id,String(q.body.time||''),String(q.body.destination||''),!!q.body.autoSit,String(q.body.objectUUID||''));r.json({ok:true})}catch(e){fail(r,e,400)}});
 app.delete('/api/bots/:id/routes/:routeId',auth,async(q,r)=>{try{await db.deleteRoute(q.params.id,q.params.routeId);r.json({ok:true})}catch(e){fail(r,e)}});
@@ -194,12 +195,10 @@ app.post('/api/agent/bootstrap',async(req,res)=>{try{const requestedId=Number(re
 app.post('/api/agent/heartbeat',async(req,res)=>{try{const requestedId=Number(req.body.botId||0),secret=String(req.body.agentSecret||''),agentKey=String(req.body.agentKey||'');let b=null;if(agentKey){const ar=await db.agentRuntime(agentKey);if(!ar||!ar.approved||ar.agentSecret!==secret||Number(ar.botId||0)!==requestedId)return fail(res,new Error('Agent não autorizado'),403);b=ar.config;}else{b=requestedId?await db.get(requestedId,true):await db.findByAgentSecret(secret);if(!b||b.agentSecret!==secret)return fail(res,new Error('Agent não autorizado'),403);}await db.heartbeat(b.id,req.body.status||{});if(req.body.log)await db.log(b.id,req.body.log);res.json({ok:true,botId:b.id,desiredOnline:b.desiredOnline})}catch(e){fail(res,e)}});
 
 app.get('/api/system/stats',auth,async(req,res)=>{try{res.json({ok:true,stats:await db.stats()})}catch(e){fail(res,e)}});
-app.get('/api/system/log-retention',auth,async(req,res)=>{try{res.json({ok:true,days:await db.getRetentionDays()})}catch(e){fail(res,e)}});
-app.put('/api/system/log-retention',auth,async(req,res)=>{try{res.json({ok:true,days:await db.setRetentionDays(req.body?.days)})}catch(e){fail(res,e)}});
 app.post('/api/system/cleanup',auth,async(req,res)=>{try{res.json({ok:true,...await db.cleanupLogs(req.body?.days||30)})}catch(e){fail(res,e)}});
 app.post('/api/system/backup',auth,async(req,res)=>{try{const data=await db.exportBackup();const pkg=encryptBackup(data,req.body?.password);const name=`sl-bot-backup-${new Date().toISOString().slice(0,10)}.slbackup`;res.setHeader('Content-Type','application/octet-stream');res.setHeader('Content-Disposition',`attachment; filename="${name}"`);res.send(JSON.stringify(pkg))}catch(e){fail(res,e,400)}});
 app.post('/api/system/restore',auth,async(req,res)=>{try{const data=decryptBackup(req.body?.backup,req.body?.password);const out=await db.restoreBackup(data);res.json({ok:true,...out})}catch(e){fail(res,new Error('Não foi possível restaurar: '+(e.message||e)),400)}});
 app.get('/health',(_q,r)=>r.send('ok'));
-db.init().then(()=>{primBridge.scheduleSync(db);setInterval(()=>db.getRetentionDays().then(days=>db.cleanupLogs(days)).catch(e=>console.warn('Limpeza de logs:',e.message)),6*60*60*1000);return app.listen(PORT,'0.0.0.0',()=>console.log('Master Panel ativo na porta',PORT))}).catch(e=>{console.error(e);process.exit(1)});
+db.init().then(()=>{primBridge.scheduleSync(db);setInterval(()=>db.cleanupLogs(Number(process.env.LOG_RETENTION_DAYS||30)).catch(e=>console.warn('Limpeza de logs:',e.message)),6*60*60*1000);return app.listen(PORT,'0.0.0.0',()=>console.log('Master Panel ativo na porta',PORT))}).catch(e=>{console.error(e);process.exit(1)});
 
 new Promise(resolve=>setTimeout(resolve,5000)).then(()=>db.initRoutes()).then(()=>{setInterval(schedulerTick,20000);setInterval(pendingConnections,60000);setInterval(()=>watchdog.observe().catch(e=>console.error('Watchdog:',e.message)),90000);watchdog.observe().catch(console.error);pendingConnections()}).catch(e=>console.error('Rotas:',e.message));
