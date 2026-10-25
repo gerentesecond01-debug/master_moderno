@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express=require('express');const session=require('express-session');const PgSession=require('connect-pg-simple')(session);const {Pool}=require('pg');const path=require('path');const db=require('./database');const agent=require('./agentClient');const watchdog=require('./agentWatchdog');
 const {encryptBackup,decryptBackup}=require('./backupCrypto');
-const primBridge=require('./primBridge');
+const primBridge=require('./primBridge');const primInvites=require('./primInvites');
 const app=express();const PORT=Number(process.env.PORT||10000);
 // Render termina o HTTPS no proxy. Sem trust proxy, cookies 'secure' podem não ser gravados.
 app.set('trust proxy',1);
@@ -48,6 +48,7 @@ app.use(session({
 // Despertar agora é controlado pelo Watchdog, apenas para Agents sem heartbeat.
 app.use(express.static(path.join(__dirname,'public')));
 function auth(req,res,next){if(req.session.ok)return next();res.status(401).json({ok:false,error:'Não autenticado'});}function fail(res,e,code=500){res.status(code).json({ok:false,error:e.message||String(e)})}
+primInvites.mount(app,auth,db,agent);
 app.get('/',(_q,r)=>r.sendFile(path.join(__dirname,'public/index.html')));
 app.post('/api/login',(req,res)=>{if(String(req.body.password||'')===String(process.env.ADMIN_PASSWORD||'admin123')){req.session.ok=true;return res.json({ok:true})}res.status(403).json({ok:false,error:'Senha incorreta'})});
 app.post('/api/logout',(q,r)=>q.session.destroy(()=>r.json({ok:true})));
@@ -217,6 +218,6 @@ app.post('/api/system/cleanup',auth,async(req,res)=>{try{res.json({ok:true,...aw
 app.post('/api/system/backup',auth,async(req,res)=>{try{const data=await db.exportBackup();const pkg=encryptBackup(data,req.body?.password);const name=`sl-bot-backup-${new Date().toISOString().slice(0,10)}.slbackup`;res.setHeader('Content-Type','application/octet-stream');res.setHeader('Content-Disposition',`attachment; filename="${name}"`);res.send(JSON.stringify(pkg))}catch(e){fail(res,e,400)}});
 app.post('/api/system/restore',auth,async(req,res)=>{try{const data=decryptBackup(req.body?.backup,req.body?.password);const out=await db.restoreBackup(data);res.json({ok:true,...out})}catch(e){fail(res,new Error('Não foi possível restaurar: '+(e.message||e)),400)}});
 app.get('/health',(_q,r)=>r.send('ok'));
-db.init().then(async()=>{await initGroupPublisher();primBridge.scheduleSync(db);setInterval(()=>db.cleanupLogs(Number(process.env.LOG_RETENTION_DAYS||30)).catch(e=>console.warn('Limpeza de logs:',e.message)),6*60*60*1000);return app.listen(PORT,'0.0.0.0',()=>console.log('Master Panel ativo na porta',PORT))}).catch(e=>{console.error(e);process.exit(1)});
+db.init().then(async()=>{await primInvites.init(db);await initGroupPublisher();primBridge.scheduleSync(db);setInterval(()=>db.cleanupLogs(Number(process.env.LOG_RETENTION_DAYS||30)).catch(e=>console.warn('Limpeza de logs:',e.message)),6*60*60*1000);return app.listen(PORT,'0.0.0.0',()=>console.log('Master Panel ativo na porta',PORT))}).catch(e=>{console.error(e);process.exit(1)});
 
 new Promise(resolve=>setTimeout(resolve,5000)).then(()=>db.initRoutes()).then(()=>{setInterval(schedulerTick,20000);setInterval(groupSchedulerTick,20000);setInterval(pendingConnections,60000);setInterval(()=>watchdog.observe().catch(e=>console.error('Watchdog:',e.message)),90000);watchdog.observe().catch(console.error);pendingConnections()}).catch(e=>console.error('Rotas:',e.message));
