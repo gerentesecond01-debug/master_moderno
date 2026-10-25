@@ -11,3 +11,5 @@ details{margin-top:14px;padding:10px;border:1px solid rgba(255,255,255,.08);bord
 
 /* Ajustes de estabilidade e usabilidade */
 .botcard .actions .danger:last-child{margin-left:auto;background:#7f1d1d;border:1px solid #b91c1c}.modal-shell{overscroll-behavior:contain}.modal-shell .card{box-shadow:none;margin:0;border:0;background:transparent;padding:0}.modal-shell button{min-height:38px}@media(max-width:600px){.botcard .actions button{flex:1 1 auto}.modal-shell{max-height:95dvh}.sectiontitle{align-items:flex-start;gap:10px;flex-wrap:wrap}}
+
+.nexus-prim-link{display:block;color:#c4b5fd;text-decoration:none;border-radius:9px;padding:11px 12px;margin:3px 0;font-size:13px}.nexus-prim-link:hover{background:#29204b;color:white}
