@@ -52,7 +52,14 @@ app.get('/',(_q,r)=>r.sendFile(path.join(__dirname,'public/index.html')));
 app.post('/api/login',(req,res)=>{if(String(req.body.password||'')===String(process.env.ADMIN_PASSWORD||'admin123')){req.session.ok=true;return res.json({ok:true})}res.status(403).json({ok:false,error:'Senha incorreta'})});
 app.post('/api/logout',(q,r)=>q.session.destroy(()=>r.json({ok:true})));
 app.get('/api/me',auth,(q,r)=>r.json({ok:true}));
-app.get('/api/bots',auth,async(q,r)=>{try{const bots=await db.list();const servers=await db.listAgents();const byId=new Map(servers.map(a=>[Number(a.id),a]));for(const b of bots){const srv=byId.get(Number(b.agentId));b.server=srv?{id:srv.id,name:srv.name,agentUrl:srv.agentUrl,checkStatus:srv.checkStatus,approved:srv.approved}:null;}for(const b of bots){if(!b.desiredOnline){b.live={reachable:false,online:false,running:false,phase:'stopped',lastReason:'Desligado pelo usuário'};continue;}try{const full=await db.get(b.id,true);const s=await agent.call(full,'/status');b.live=s.status||s;}catch(e){b.live={reachable:false,phase:'unreachable',error:e.message}}}r.json({ok:true,bots})}catch(e){fail(r,e)}});
+app.get('/api/bots',auth,async(q,r)=>{try{const bots=await db.list();const servers=await db.listAgents();const byId=new Map(servers.map(a=>[Number(a.id),a]));for(const b of bots){const srv=byId.get(Number(b.agentId));b.server=srv?{id:srv.id,name:srv.name,agentUrl:srv.agentUrl,checkStatus:srv.checkStatus,approved:srv.approved}:null;}for(const b of bots){
+ if(!b.desiredOnline){b.live={reachable:false,online:false,running:false,phase:'stopped',lastReason:'Desligado pelo usuário'};continue;}
+ const seen=Date.parse(b.runtime?.lastAgentSeen||'');
+ const fresh=Number.isFinite(seen)&&Date.now()-seen<135000;
+ b.live={reachable:fresh,online:fresh&&!!b.runtime?.lastOnline,running:fresh&&!!b.runtime?.lastOnline,
+   phase:fresh?(b.runtime?.lastPhase||'unknown'):'unreachable',lastReason:fresh?(b.runtime?.lastReason||''):'Sem heartbeat recente',
+   lastChangeAt:b.runtime?.lastAgentSeen||null};
+ }r.json({ok:true,bots})}catch(e){fail(r,e)}});
 app.post('/api/bots',auth,async(req,res)=>{try{const b=await db.create(req.body);await db.desired(b.id,true);res.json({ok:true,bot:b,message:'Bot cadastrado; conexão automática na fila.'});setImmediate(()=>autoConnect(b.id).catch(console.error))}catch(e){fail(res,e,400)}});
 app.get('/api/bots/:id',auth,async(req,res)=>{try{const b=await db.get(req.params.id);if(!b)return fail(res,new Error('Bot não encontrado'),404);res.json({ok:true,bot:b})}catch(e){fail(res,e)}});
 app.put('/api/bots/:id',auth,async(req,res)=>{try{res.json({ok:true,bot:await db.update(req.params.id,req.body)})}catch(e){fail(res,e,400)}});

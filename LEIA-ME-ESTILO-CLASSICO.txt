@@ -1,7 +1,0 @@
-NEXUS MASTER — ESTILO CLASSICO (inspirado na interface Radegast/METAbolt)
-
-Mudancas somente em public/index.html e public/css/radegast-classic.css.
-Todas as APIs, agendamentos, Agents, banco, prim e Watchdog permanecem como no Master enviado.
-Instalacao: envie o conteudo da pasta master_moderno-main para a raiz do repositorio do Master e realize o deploy no Render.
-Para reverter o visual: remova a referencia a /css/radegast-classic.css em public/index.html.
-Observacao: alteracao visual nao acelera requisicoes lentas ao backend nem corrige falhas do Agent.
