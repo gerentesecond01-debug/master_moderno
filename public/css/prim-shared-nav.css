@@ -1,0 +1,10 @@
+/* Navegação consistente com o painel principal NEXUS */
+.master-windowbar{height:46px;display:flex;align-items:center;gap:12px;padding:0 20px;background:#090f1d;border-bottom:1px solid #27334b;color:#e8f0ff;font-size:13px}
+.master-windowbar .master-logo{width:27px;height:27px;display:grid;place-items:center;border-radius:7px;background:#7040c9;font-weight:900;font-size:18px}
+.master-windowbar>span:nth-last-child(2){color:#9aabc6;font-size:12px}.master-windowbar small{margin-left:auto;color:#5de0a5;letter-spacing:1px}
+.master-menubar{display:flex;gap:3px;align-items:center;flex-wrap:wrap;padding:7px 15px;background:#101a2d;border-bottom:1px solid #293b59}
+.master-menubar a{font-size:12px;padding:9px 12px;color:#c1d0e7;border-radius:8px;white-space:nowrap}
+.master-menubar a:hover,.master-menubar a.selected{background:#332653;color:#fff}
+.layout{min-height:calc(100vh - 100px)}.sidebar{height:calc(100vh - 100px);top:0}
+.group-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px}.group-tools button{padding:8px 12px;border:1px solid #475a79;background:#1a2a45;color:#e2eaff;border-radius:8px;cursor:pointer}.group-help{color:#95a9c8;font-size:12px}
+@media(max-width:800px){.master-windowbar small{display:none}.master-menubar{gap:0}.master-menubar a{padding:8px}.sidebar{height:auto}}
