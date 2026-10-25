@@ -58,7 +58,7 @@ app.get('/api/bots',auth,async(q,r)=>{try{const bots=await db.list();const serve
  const fresh=Number.isFinite(seen)&&Date.now()-seen<135000;
  b.live={reachable:fresh,online:fresh&&!!b.runtime?.lastOnline,running:fresh&&!!b.runtime?.lastOnline,
    phase:fresh?(b.runtime?.lastPhase||'unknown'):'unreachable',lastReason:fresh?(b.runtime?.lastReason||''):'Sem heartbeat recente',
-   lastChangeAt:b.runtime?.lastAgentSeen||null};
+   lastChangeAt:b.runtime?.lastAgentSeen||null,region:fresh&&b.runtime?.lastOnline?(b.runtime?.lastRegion||''):''};
  }r.json({ok:true,bots})}catch(e){fail(r,e)}});
 app.post('/api/bots',auth,async(req,res)=>{try{const b=await db.create(req.body);await db.desired(b.id,true);res.json({ok:true,bot:b,message:'Bot cadastrado; conexão automática na fila.'});setImmediate(()=>autoConnect(b.id).catch(console.error))}catch(e){fail(res,e,400)}});
 app.get('/api/bots/:id',auth,async(req,res)=>{try{const b=await db.get(req.params.id);if(!b)return fail(res,new Error('Bot não encontrado'),404);res.json({ok:true,bot:b})}catch(e){fail(res,e)}});
