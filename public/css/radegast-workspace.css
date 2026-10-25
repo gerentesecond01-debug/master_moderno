@@ -22,3 +22,8 @@ main{margin:0;flex:1;min-width:0;max-width:none;padding:13px 15px;background:#e1
 .avatar-region{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .workspace-body{padding:8px 11px}.workspace-tabcontent{min-height:100px}
 @media(max-width:1050px){.workspace-live-cards{grid-template-columns:1fr}.workspace-live-card .live-region,.workspace-live-card .live-status{font-size:17px}}
+
+/* Programações ficam em uma única aba, sem botão duplicado na barra de ações. */
+.workspace-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.workspace-route-row{display:grid;grid-template-columns:75px minmax(0,1fr) 65px;gap:10px;padding:9px;border-bottom:1px solid #e0e7ef;font-size:12px;align-items:center}
+.workspace-route-row strong{overflow-wrap:anywhere}
