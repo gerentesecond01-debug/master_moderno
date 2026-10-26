@@ -11,3 +11,5 @@
 .pro-history-item{display:grid;gap:3px;border:1px solid rgba(120,140,170,.18);padding:9px 12px;border-radius:9px;overflow-wrap:anywhere}
 .pro-history-item strong{font-size:12px}.pro-history-item span{font-size:12px;opacity:.78}
 @media(max-width:600px){.pro-tabs .pro-tab{flex:1 1 auto;padding:9px}}
+
+.pro-group-picker{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.pro-group-picker select{flex:1;min-width:200px}.pro-group-picker button{white-space:nowrap}
