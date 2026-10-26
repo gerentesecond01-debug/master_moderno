@@ -29,3 +29,14 @@ body{padding-top:35px!important;padding-bottom:25px!important;background:#dce3eb
 @media(max-width:850px){.workbench>aside{flex:0 0 165px!important;width:165px!important}.layout .panel-head{flex-wrap:wrap}.layout .stats{gap:7px}}
 @media(max-width:720px){.workbench{display:block!important}.workbench>aside{position:relative!important;top:auto!important;width:100%!important;height:auto!important;min-height:0!important;display:block!important;border-right:0!important;border-bottom:1px solid #aab8c7!important}.workbench .navgroup{display:flex!important;flex-wrap:wrap;gap:3px}.workbench .navgroup>span{width:100%}.workbench aside .navgroup button,.workbench aside .navgroup .nav,.workbench aside .navgroup .nexus-prim-link{width:auto!important;display:inline-flex!important}.workbench>main{padding:10px!important}.layout .stats{grid-template-columns:repeat(3,minmax(0,1fr))}.layout .stat{padding:9px}.layout .stat strong{font-size:22px}.layout .panel-head{display:block}.layout .tools{margin-top:10px}}
 @media(max-width:480px){.layout .stats{grid-template-columns:1fr}.layout .tools>*{width:100%}}
+
+/* Correções de navegação: sidebar e conteúdo com mesmo comportamento nas duas telas. */
+.workbench>aside .logout{margin-top:auto!important;color:#a52d3b!important;border-top:1px solid #c3ced9!important;border-radius:0!important;padding-top:12px!important}
+.workbench>aside .sidefoot{margin-top:4px!important}
+.workbench>aside .navgroup a,.workbench>aside .navgroup button{cursor:pointer!important;line-height:1.45!important}
+.workbench>aside .navgroup a:focus-visible,.workbench>aside .navgroup button:focus-visible{outline:2px solid #337bb5!important;outline-offset:1px}
+.layout .tools button,.layout .actions button{cursor:pointer!important}
+.layout .sidebar{display:flex!important}
+.layout .sidebar .navgroup{display:block}
+.layout .sidebar .navgroup .nav{display:block}
+@media(max-width:720px){.layout .sidebar{display:block!important}.layout .sidebar .navgroup{display:flex!important}.layout .sidebar .navgroup .nav{display:inline-flex!important}}
